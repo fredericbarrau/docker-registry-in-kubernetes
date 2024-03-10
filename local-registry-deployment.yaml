@@ -1,6 +1,6 @@
 # Create a deployment resource for kubernetes for deploying a registry container
 
-# The registry will be used as "registry.local" and "registry" (the latter is used by the docker daemon)
+# The registry will be used as "docker-registry" within the PodSpec and docker-registry:30000 from outside the cluster
 
 # Create the following resources in each namespace that needs to pull images from the registry:
 # -----------------------------------------------------------------------------------------------
