@@ -26,14 +26,14 @@ kubectl get secret docker-registry-tls -o jsonpath="{.data.tls\.crt}" | base64 -
 
 # => Put this file on your docker daemon config folder (locally if you are on linux, in a dedicated VM if you are on Mac/Windows)
 
-# SSH to your docker host (if a VM) first, and `sudo -i`` then:
+# SSH to your docker host (if a VM) first, and `sudo -i` then:
 mkdir -p /etc/docker/certs.d/docker-registry/
 # From your local machine:
 scp ca.crt root@<host>:/etc/docker/certs.d/docker-registry/ca.crt
 # Or copy & paste the content of the ca.crt file grabbed from k8s above into the ca.crt file in your VM, I won't judge you.
 ```
 
-See [here](https://distribution.github.io/distribution/about/insecure/#use-self-signed-certificates) for more information of using regarding docker self-signed cert on docker registry.
+See [here](https://distribution.github.io/distribution/about/insecure/#use-self-signed-certificates) for more information on using docker with self-signed cert on a docker registry.
 
 ## Configure your /etc/hosts
 
