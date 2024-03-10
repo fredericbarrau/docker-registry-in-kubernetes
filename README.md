@@ -2,7 +2,7 @@
 
 "Simple" example of how to run a docker registry in Kubernetes, for local developmennt, with TLS & basic auth.
 
-This has been tested on a MacOS with colima. Should work as-is on a minikube setup as well.
+This has been tested on MacOS with colima. Should work as-is on a minikube setup as well.
 
 Beware that TLS can be a PITA to configure on the docker side though, and you might need the access to your docker **daemon** config to make it work.
 
