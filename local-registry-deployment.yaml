@@ -1,0 +1,310 @@
+# Create a deployment resource for kubernetes for deploying a registry container
+
+# The registry will be used as "registry.local" and "registry" (the latter is used by the docker daemon)
+
+# Create the following resources in each namespace that needs to pull images from the registry:
+# -----------------------------------------------------------------------------------------------
+# Namespace settings
+# -----------------------------------------------------------------------------------------------
+
+# Registry docker authentication: create this secret in every namespace that needs to pull images from the registry
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-secret
+type: kubernetes.io/dockerconfigjson
+data:
+  # A default docker configuration using the registry user and password
+  # {
+  #   "auths":{
+  #     "docker-registry":{"auth":"ZG9ja2VyLXVzZXI6bVlwNHM1MHJEwqc="}
+  #   }
+  # }
+  .dockerconfigjson: eyAiYXV0aHMiOiB7ICJkb2NrZXItcmVnaXN0cnkiOiB7ICJhdXRoIjogIlpHOWphMlZ5TFhWelpYSTZiVmx3TkhNMU1ISkV3cWM9IiB9IH0gfQ==
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+imagePullSecrets:
+  - name: registry-secret
+
+# -----------------------------------------------------------------------------------------------
+# END: Namespace settings
+# -----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
+# TLS
+# -----------------------------------------------------------------------------------------------
+
+# Create a service account that will have write access to the docker-registry-tls secret
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: registry-tls
+
+# Create a role that will allow the service account to write to the docker-registry-tls secret
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: registry-tls
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch", "delete"]
+
+# Create a role binding that will allow the service account to write to the docker-registry-tls secret
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: registry-tls
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: registry-tls
+subjects:
+  - kind: ServiceAccount
+    name: registry-tls
+
+# Create a self-signed certificate for the registry, and store it in a secret, using a job resource
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: registry-tls
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsUser: 1000
+      serviceAccount: registry-tls
+      initContainers:
+        - name: gen-self-signed-cert
+          image: alpine:latest
+          command: ["/bin/sh", "-c"]
+          securityContext:
+            runAsUser: 0
+          args:
+            - |
+              apk add openssl
+              openssl req -newkey rsa:2048 -nodes -sha256 -keyout /certs/domain.key -x509 -days 3650 -out /certs/domain.crt -subj "/C=US/ST=CA/L=Paris/O=My Company/CN=docker-registry/" -addext "subjectAltName = DNS:localhost,DNS:docker-registry"
+              chown 1000:1000 /certs/domain.*
+              ls -la /certs
+          volumeMounts:
+            - name: registry-tls
+              mountPath: /certs
+          resources: {}
+      containers:
+        - name: registry-tls
+          image: rancher/kubectl:v1.28.5
+          args:
+            - create
+            - secret
+            - tls
+            - docker-registry-tls
+            - --cert=/certs/domain.crt
+            - --key=/certs/domain.key
+          volumeMounts:
+            - name: registry-tls
+              mountPath: /certs
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "1000m"
+            requests:
+              memory: "128Mi"
+              cpu: "1000m"
+      restartPolicy: Never
+      volumes:
+        - name: registry-tls
+          emptyDir: {}
+# -----------------------------------------------------------------------------------------------
+# END TLS
+# -----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
+# DOCKER REGISTRY
+# -----------------------------------------------------------------------------------------------
+# create a secret for the registry user and password; this will be used to create the htpasswd file
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: docker-registry-auth
+type: kubernetes.io/basic-auth
+data:
+  username: ZG9ja2VyLXVzZXI=
+  password: bVlwNHM1MHJEwqc=
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: registry-volume
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /tmp/registry-volume
+# Create a persistent volume claim for the registry-volume
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+# Create the configuration as a ConfigMap resource for the docker registry
+# See https://distribution.github.io/distribution/about/configuration/
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-config
+data:
+  config.yml: |
+    version: 0.1
+    auth:
+      htpasswd:
+        realm: basic-realm
+        path: /etc/docker/htpasswd
+        maxpasswordattempts: 3
+    log:
+      level: debug
+      formatter: text
+      fields:
+        service: registry
+        environment: development
+    storage:
+      cache:
+        layerinfo: inmemory
+      filesystem:
+        rootdirectory: /var/lib/registry
+    http:
+      addr: :5000
+      headers:
+        X-Content-Type-Options: [nosniff]
+      tls:
+        certificate: /certs/tls.crt
+        key: /certs/tls.key
+        minimumtls: tls1.2
+        ciphersuites:
+          - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+          - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    health:
+      storagedriver:
+        enabled: true
+        interval: 10s
+        threshold: 3
+
+
+# Create a deployment resource for kubernetes for deploying a registry container
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry-deployment
+  labels:
+    app: registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+  template:
+    metadata:
+      labels:
+        app: registry
+    spec:
+      initContainers:
+        # Init container to create the htpasswd file
+        - name: httpwd-generator
+          image: xmartlabs/htpasswd:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              htpasswd -Bbc /generated/htpasswd "$username" "$password"
+          envFrom:
+            - secretRef:
+                name: docker-registry-auth
+          volumeMounts:
+            - name: registry-auth
+              mountPath: /generated
+      containers:
+        - name: registry
+          image: registry:2
+          ports:
+            - name: registry
+              containerPort: 5000
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "2000m"
+            requests:
+              memory: "128Mi"
+              cpu: "500m"
+          volumeMounts:
+            - mountPath: /certs
+              name: registry-tls
+            - mountPath: /var/lib/registry
+              name: registry-volume
+            - mountPath: /etc/docker/registry
+              name: registry-config
+            - mountPath: /etc/docker
+              name: registry-auth
+      volumes:
+        - name: registry-tls
+          secret:
+            secretName: docker-registry-tls
+        - name: registry-volume
+          persistentVolumeClaim:
+            claimName: registry-pvc
+        - name: registry-config
+          configMap:
+            name: registry-config
+        - name: registry-auth
+          emptyDir: {}
+---
+# ClusterIP service for accessing the registry internally
+apiVersion: v1
+kind: Service
+metadata:
+  name: docker-registry
+spec:
+  type: NodePort
+  selector:
+    app: registry
+  ports:
+    - name: registry-svc
+      nodePort: 30000
+      protocol: TCP
+      port: 5000
+      targetPort: registry
+---
+# # Ingress rule for accessing the registry externally
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: registry-ingress
+# spec:
+#   rules:
+#     - host: docker-registry
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: docker-registry
+#                 port:
+#                   name: registry-svc
