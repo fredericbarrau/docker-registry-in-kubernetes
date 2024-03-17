@@ -17,11 +17,17 @@ type: kubernetes.io/dockerconfigjson
 data:
   # A default docker configuration using the registry user and password
   # {
-  #   "auths":{
-  #     "docker-registry":{"auth":"ZG9ja2VyLXVzZXI6bVlwNHM1MHJEwqc="}
+  #   "auths": {
+  #     "docker-registry": {
+  #       "auth": "ZG9ja2VyLXVzZXI6bVlwNHM1MHJEwqc="
+  #     },
+  #     "docker-registry:5000": {
+  #       "auth": "ZG9ja2VyLXVzZXI6bVlwNHM1MHJEwqc="
+  #     }
   #   }
   # }
-  .dockerconfigjson: eyAiYXV0aHMiOiB7ICJkb2NrZXItcmVnaXN0cnkiOiB7ICJhdXRoIjogIlpHOWphMlZ5TFhWelpYSTZiVmx3TkhNMU1ISkV3cWM9IiB9IH0gfQ==
+
+  .dockerconfigjson: ewogICJhdXRocyI6IHsKICAgICJkb2NrZXItcmVnaXN0cnkiOiB7CiAgICAgICJhdXRoIjogIlpHOWphMlZ5TFhWelpYSTZiVmx3TkhNMU1ISkV3cWM9IgogICAgfSwKICAgICJkb2NrZXItcmVnaXN0cnk6NTAwMCI6IHsKICAgICAgImF1dGgiOiAiWkc5amEyVnlMWFZ6WlhJNmJWbHdOSE0xTUhKRXdxYz0iCiAgICB9ICAgIAogIH0KfQo=
 
 ---
 apiVersion: v1
