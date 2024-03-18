@@ -64,26 +64,6 @@ docker push docker-registry:30000/alpine:latest
 
 ## Use your registry from within the kubernetes cluster
 
-* Add a coreDNS entry for your registry in the kube-system namespace, to resolve the registry name to the service IP. Create a ConfigMap with the following content and apply it to your cluster:
-
-```yaml
-# File: local-registry-coredns.yaml
-# CoreDNS custom config
-apiVersion: v1
-data:
-  config-registry.override: |
-    # Resolve the name of the registry to the service IP
-    rewrite name docker-registry docker-registry.registry.svc.cluster.local
-kind: ConfigMap
-metadata:
-  name: coredns-custom
-  namespace: kube-system
-```
-
-  ```bash
-  kubectl apply -n kube-system -f local-registry-coredns.yaml
-  ```
-
 **For each namespace where you want to use the registry:**
 
 * Copy the registry-secret with the registry's auth, and patch the namespace's default service account to authenticate to your registry:
@@ -95,7 +75,7 @@ metadata:
   kubectl patch -n <NAMESPACE> serviceaccount default -p '{"imagePullSecrets": [{"name": "registry-secret"}]}'
   ```
 
-* Then, in your podSpec, you can use the registry to fetch your images: `docker-registry:5000/alpine:latest`
+* Then, in your podSpec, you can use the registry to fetch your images: `docker-registry:30000/alpine:latest`
 
 **PodSpec example:**
 
@@ -109,7 +89,7 @@ spec:
   containers:
   - name: my-app
     # Reference the internal registry
-    image: docker-registry:5000/my-app:latest
+    image: docker-registry:30000/my-app:latest
     ports:
     - containerPort: 80
 ```
